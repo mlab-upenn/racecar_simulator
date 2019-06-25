@@ -53,7 +53,7 @@ unused_idx1: 2
 unused_idx2: 3
 
 # Enables joystick if true
-joy: true
+joy: false
 # Joystick indices
 joy_button_idx: 4  # LB button
 assist_button_idx: 1 # A button

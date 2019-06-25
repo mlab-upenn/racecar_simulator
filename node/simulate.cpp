@@ -458,7 +458,7 @@ public:
             prev_mux[i] = false;
         }
 
-        mux_controller[joy_mux_idx] = true;
+        mux_controller[joy_mux_idx] = joy_on;
 
         dr_assist_on = true;
 
@@ -590,17 +590,17 @@ public:
             }
             if (changed) {
                 for (int i = 0; i < mux_size; i++) {
-                    std::cout << mux_controller[i] << std::endl;
+                    // std::cout << mux_controller[i] << std::endl;
                     prev_mux[i] = mux_controller[i];
                 }
-                std::cout << std::endl;
+                // std::cout << std::endl;
             }
 
-            std::cout << "max_vel: " << max_speed << std::endl;
-            std::cout << "max_accel: " << max_accel << std::endl;
-            std::cout << "vel: " << state.velocity << std::endl;
-            std::cout << "accel: " << accel << std::endl;
-            std::cout << std::endl;
+            // std::cout << "max_vel: " << max_speed << std::endl;
+            // std::cout << "max_accel: " << max_accel << std::endl;
+            // std::cout << "vel: " << state.velocity << std::endl;
+            // std::cout << "accel: " << accel << std::endl;
+            // std::cout << std::endl;
 
             // Update the pose
             ros::Time timestamp = ros::Time::now();
@@ -814,9 +814,9 @@ public:
 
                             no_collision = false;
                             TTC = true;
-                            std::cout << "Collision!" << std::endl;
-                            std::cout << "Angle: " << angle << std::endl;
-                            std::cout << "TTC: " << ttc << std::endl << std::endl;
+                            // std::cout << "Collision!" << std::endl;
+                            // std::cout << "Angle: " << angle << std::endl;
+                            // std::cout << "TTC: " << ttc << std::endl << std::endl;
                         }
 
                     }
@@ -1001,7 +1001,7 @@ public:
             // changing mux_controller:
             if (msg.buttons[assist_button_idx]) {
                 if (dr_assist_on) {
-                    std::cout << "Driver Assist turned off" << std::endl;
+                    // std::cout << "Driver Assist turned off" << std::endl;
                     dr_assist_on = false;
                     // switch control to previous controller if driver assist was on
                     if (mux_controller[dr_assist_mux_idx]) {
@@ -1010,13 +1010,13 @@ public:
                     }
                 }
                 else {
-                    std::cout << "Driver Assist turned on" << std::endl;
+                    // std::cout << "Driver Assist turned on" << std::endl;
                     dr_assist_on = true;
                 }
             }
             else if (msg.buttons[joy_button_idx]) {
                 if (joy_on) {
-                    std::cout << "Joystick turned off" << std::endl;
+                    // std::cout << "Joystick turned off" << std::endl;
                     joy_on = false;
                     mux_controller[joy_mux_idx] = false;
                     // previous controller on ?
@@ -1024,7 +1024,7 @@ public:
                     // have some other idea when there's actually something else
                 }
                 else {
-                    std::cout << "Joystick turned on" << std::endl;
+                    // std::cout << "Joystick turned on" << std::endl;
                     joy_on = true;
                     mux_controller[joy_mux_idx] = true;
                 }
@@ -1236,7 +1236,7 @@ public:
 
             // calculate acceleration
             double acceleration = kp * dif;
-
+            ROS_INFO("computed accel: %f", acceleration);
             return acceleration;
         }
 
