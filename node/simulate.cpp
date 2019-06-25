@@ -81,7 +81,7 @@ private:
     // Joystick parameters
     int joy_speed_axis, joy_angle_axis;
     double joy_max_speed;
-    int joy_button_idx, assist_button_idx;
+    int joy_button_idx, assist_button_idx, nav_button_idx;
 
     // A ROS node
     ros::NodeHandle n;
@@ -155,11 +155,15 @@ private:
     bool dr_assist_on;
     // is joystick active
     bool joy_on;
+    // is nav algo active
+    bool nav_on;
 
     // set what is currently controlling the car
     std::vector<bool> mux_controller;
+    std::vector<std::string> mux_channel_names;
     int joy_mux_idx;
     int dr_assist_mux_idx;
+    int nav_mux_idx;
     int mux_size;
 
     // for demo
@@ -258,6 +262,7 @@ public:
         n.getParam("mux_size", mux_size);
         n.getParam("joy_mux_idx", joy_mux_idx);
         n.getParam("dr_assist_mux_idx", dr_assist_mux_idx);
+        n.getParam("nav_mux_idx", nav_mux_idx);
 
 
         // Get joystick parameters
@@ -267,6 +272,13 @@ public:
         n.getParam("joy_max_speed", joy_max_speed);
         n.getParam("joy_button_idx", joy_button_idx);
         n.getParam("assist_button_idx", assist_button_idx);
+        n.getParam("nav_button_idx", nav_button_idx);
+
+        // Get driver assist parameters
+        n.getParam("dr_assist_on", dr_assist_on);
+
+        // Get nav algo parameters
+        n.getParam("nav_on", nav_on);
 
         // Determine if we should broadcast
         n.getParam("broadcast_transform", broadcast_transform);
@@ -453,17 +465,21 @@ public:
         // initialize mux controller to start with joystick
         mux_controller.reserve(mux_size);
         prev_mux.reserve(mux_size);
+        mux_channel_names.reserve(mux_size);
         for (int i = 0; i < mux_size; i++) {
             mux_controller[i] = false;
             prev_mux[i] = false;
         }
+        if (nav_on) {
+            mux_controller[nav_mux_idx] = nav_on;
 
-        mux_controller[joy_mux_idx] = joy_on;
-
-        dr_assist_on = true;
+        } else {
+            mux_controller[joy_mux_idx] = joy_on;
+        }
+        n.getParam("mux_channel_names", mux_channel_names);
 
         // default is joy (could change)
-        prev_controller_idx = joy_mux_idx;
+        prev_controller_idx = nav_on ? nav_mux_idx : joy_mux_idx;
 
         n.getParam("ttc_threshold", ttc_threshold);
 
@@ -582,6 +598,16 @@ public:
                 set_steer_angle_vel(compute_steer_vel(joy_desired_steer));
             }
 
+            // stop car if nothing active
+            bool something_active = false;
+            for (int i=0; i < mux_size; i++) {
+                something_active = something_active || mux_controller[i];
+            }
+            if (!something_active) {
+                set_accel(compute_accel(0.0));
+                set_steer_angle_vel(compute_steer_vel(0.0));
+            }
+
 
             // Prints the mux whenever it is changed
             bool changed = false;
@@ -590,16 +616,16 @@ public:
             }
             if (changed) {
                 for (int i = 0; i < mux_size; i++) {
-                    // std::cout << mux_controller[i] << std::endl;
+                    std::cout << mux_channel_names[i] << ": " << mux_controller[i] << std::endl;
                     prev_mux[i] = mux_controller[i];
                 }
-                // std::cout << std::endl;
+                std::cout << "------" << std::endl;
             }
 
             // std::cout << "max_vel: " << max_speed << std::endl;
             // std::cout << "max_accel: " << max_accel << std::endl;
-            // std::cout << "vel: " << state.velocity << std::endl;
-            // std::cout << "accel: " << accel << std::endl;
+            std::cout << "vel: " << state.velocity << std::endl;
+            std::cout << "accel: " << accel << std::endl;
             // std::cout << std::endl;
 
             // Update the pose
@@ -1029,6 +1055,15 @@ public:
                     mux_controller[joy_mux_idx] = true;
                 }
             }
+            else if (msg.buttons[nav_button_idx]) {
+                if (nav_on) {
+                    nav_on = false;
+                    mux_controller[nav_mux_idx] = false;
+                } else {
+                    nav_on = true;
+                    mux_controller[nav_mux_idx] = true;
+                }
+            }
         }
 
         void coll_callback(const racecar_simulator::Collision & msg) {
@@ -1236,7 +1271,6 @@ public:
 
             // calculate acceleration
             double acceleration = kp * dif;
-            ROS_INFO("computed accel: %f", acceleration);
             return acceleration;
         }
 

@@ -49,17 +49,26 @@ coll_threshold: 0.4
 mux_size: 4
 joy_mux_idx: 0
 dr_assist_mux_idx: 1
-unused_idx1: 2
+nav_mux_idx: 2
 unused_idx2: 3
 
-# Enables joystick if true
-joy: false
+# Enables joystick if true, all joystick fuction 
+# disabled if false (not recommended)
+joy: true
+# Enables driver assist in collision if true
+dr_assist_on: false
+# Enables whatever navigation algorithm in test if true
+nav_on: false
 # Joystick indices
 joy_button_idx: 4  # LB button
 assist_button_idx: 1 # A button
+nav_button_idx: 5 # RB button
 joy_speed_axis: 1
 joy_angle_axis: 2
 joy_max_speed: 2. # meters/second
+
+# control mux names, make sure length matches mux size
+mux_channel_names: ["joy", "driver assist", "nav", "unused"]
 
 # map-collision parameters
 inflation_size: 5
