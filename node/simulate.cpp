@@ -624,8 +624,8 @@ public:
 
             // std::cout << "max_vel: " << max_speed << std::endl;
             // std::cout << "max_accel: " << max_accel << std::endl;
-            std::cout << "vel: " << state.velocity << std::endl;
-            std::cout << "accel: " << accel << std::endl;
+            // std::cout << "vel: " << state.velocity << std::endl;
+            // std::cout << "accel: " << accel << std::endl;
             // std::cout << std::endl;
 
             // Update the pose
