@@ -64,7 +64,7 @@ joy_button_idx: 4  # LB button
 assist_button_idx: 1 # A button
 nav_button_idx: 5 # RB button
 joy_speed_axis: 1
-joy_angle_axis: 2
+joy_angle_axis: 3
 joy_max_speed: 2. # meters/second
 
 # control mux names, make sure length matches mux size
@@ -97,10 +97,11 @@ opponent_scan_topic: "/op_scan"
 opponent_pose_topic: "/op_pose"
 opponent_odom_topic: "/op_odom"
 opponent_pose_rviz_topic: "/move_base_simple/goal"
+opponent_pose_pub_topic: "/op_fake_pf"
 
 
 # The names of the transformation frames published to
-map_frame: "map"
+map_frame: "/map"
 base_frame: "base_link"
 opponent_base_frame: "op_base_link"
 scan_frame: "laser"

@@ -118,6 +118,7 @@ private:
     // publishers for opponent car
     ros::Publisher op_scan_pub;
     ros::Publisher op_odom_pub;
+    ros::Publisher op_pose_pub;
 
     // subscribers for opponent car
     ros::Subscriber op_pose_sub;
@@ -200,8 +201,8 @@ public:
         steer_angle_vel = 0.0;
         opponent_pose = {.x=0, .y=0, .theta=0, .velocity=0, .steer_angle=0.0, .angular_velocity=0.0, .slip_angle=0.0, .st_dyn=false};
         previous_opponent_pose = {.x=0, .y=0, .theta=0, .velocity=0, .steer_angle=0.0, .angular_velocity=0.0, .slip_angle=0.0, .st_dyn=false};
-        opponent_accel = 0;
-        opponent_steer_angle_vel = 0;
+        opponent_accel = 0.0;
+        opponent_steer_angle_vel = 0.0;
         previous_seconds = ros::Time::now().toSec();
 
         car_collision_thresh = 0.4;
@@ -220,12 +221,13 @@ public:
         n.getParam("mux_topic", mux_topic);
 
         // Get opponent topic names
-        std::string op_scan_topic, op_drive_topic, op_pose_topic, op_odom_topic, op_pose_rviz_topic;
+        std::string op_scan_topic, op_drive_topic, op_pose_topic, op_odom_topic, op_pose_rviz_topic, op_pose_pub_topic;
         n.getParam("opponent_scan_topic", op_scan_topic);
         n.getParam("opponent_drive_topic", op_drive_topic);
         n.getParam("opponent_pose_topic", op_pose_topic);
         n.getParam("opponent_pose_rviz_topic", op_pose_rviz_topic);
         n.getParam("opponent_odom_topic", op_odom_topic);
+        n.getParam("opponent_pose_pub_topic", op_pose_pub_topic);
 
         // Get the transformation frame names
         n.getParam("map_frame", map_frame);
@@ -303,6 +305,8 @@ public:
         odom_pub = n.advertise<nav_msgs::Odometry>(odom_topic, 1);
 
         op_odom_pub = n.advertise<nav_msgs::Odometry>(op_odom_topic, 1);
+
+        op_pose_pub = n.advertise<geometry_msgs::PoseStamped>(op_pose_pub_topic, 1);
 
         // Make a publisher for publishing map with obstacles
         map_pub = n.advertise<nav_msgs::OccupancyGrid>("/map", 1);
@@ -594,8 +598,8 @@ public:
 
             // set latest joystick commands
             if (mux_controller[joy_mux_idx]) {
-                set_accel(compute_accel(joy_desired_velocity));
-                set_steer_angle_vel(compute_steer_vel(joy_desired_steer));
+                set_accel(compute_accel(joy_desired_velocity, state));
+                set_steer_angle_vel(compute_steer_vel(joy_desired_steer,  state));
             }
 
             // stop car if nothing active
@@ -604,8 +608,8 @@ public:
                 something_active = something_active || mux_controller[i];
             }
             if (!something_active) {
-                set_accel(compute_accel(0.0));
-                set_steer_angle_vel(compute_steer_vel(0.0));
+                set_accel(compute_accel(0.0, state));
+                set_steer_angle_vel(compute_steer_vel(0.0, state));
             }
 
 
@@ -793,6 +797,19 @@ public:
 
                 // add scan if opponent is spawned
                 if (opponent_spawned) {
+                    // publish opponent ground truth current pose
+                    geometry_msgs::PoseStamped current_op_pose;
+                    current_op_pose.header.frame_id = "/map";
+                    current_op_pose.header.stamp = timestamp;
+                    current_op_pose.pose.position.x = opponent_pose.x;
+                    current_op_pose.pose.position.y = opponent_pose.y;
+                    current_op_pose.pose.position.z = 0.0;
+                    current_op_pose.pose.orientation.x = op_quat.x();
+                    current_op_pose.pose.orientation.y = op_quat.y();
+                    current_op_pose.pose.orientation.z = op_quat.z();
+                    current_op_pose.pose.orientation.w = op_quat.w();
+                    op_pose_pub.publish(current_op_pose);
+
                     double diff_x = opponent_pose.x - scan_pose.x;
                     double diff_y = opponent_pose.y - scan_pose.y;
                     double diff_dist = std::sqrt(diff_x*diff_x + diff_y*diff_y);
@@ -1005,13 +1022,13 @@ public:
         }
 
         void drive_callback(const ackermann_msgs::AckermannDriveStamped & msg) {
-            set_accel(compute_accel(msg.drive.speed));
-            set_steer_angle_vel(compute_steer_vel(msg.drive.steering_angle));
+            set_accel(compute_accel(msg.drive.speed, state));
+            set_steer_angle_vel(compute_steer_vel(msg.drive.steering_angle, state));
         }
 
         void op_drive_callback(const ackermann_msgs::AckermannDriveStamped &msg) {
-            set_op_accel(msg.drive.speed);
-            set_op_steer_angle_vel(compute_steer_vel(msg.drive.steering_angle));
+            set_op_accel(compute_accel(msg.drive.speed, opponent_pose));
+            set_op_steer_angle_vel(compute_steer_vel(msg.drive.steering_angle, opponent_pose));
         }
 
         void joy_callback(const sensor_msgs::Joy & msg) {
@@ -1248,9 +1265,9 @@ public:
             map_exists = true;
         }
 
-        double compute_steer_vel(double desired_angle) {
+        double compute_steer_vel(double desired_angle, CarState current_state) {
             // get difference between current and desired
-            double dif = (desired_angle - state.steer_angle);
+            double dif = (desired_angle - current_state.steer_angle);
 
             // calculate velocity
             double steer_vel;
@@ -1263,9 +1280,9 @@ public:
             return steer_vel;
         }
 
-        double compute_accel(double desired_velocity) {
+        double compute_accel(double desired_velocity, CarState current_state) {
             // get difference between current and desired
-            double dif = (desired_velocity - state.velocity);
+            double dif = (desired_velocity - current_state.velocity);
 
             double kp = 2.0 * max_accel / max_speed;
 
