@@ -24,6 +24,7 @@ update_pose_rate: 0.001
 # Lidar simulation parameters
 scan_beams: 1080
 scan_field_of_view: 6.2831853 #4.71 # radians
+# scan_field_of_view: 3.14
 
 
 # The distance from the center of the
