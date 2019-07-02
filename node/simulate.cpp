@@ -68,6 +68,7 @@ private:
     CarState state;
     double previous_seconds;
     double scan_distance_to_base_link;
+    double car_width;
     double max_speed, max_steering_angle;
     double max_accel, max_steering_vel;
     double accel, steer_angle_vel;
@@ -811,22 +812,26 @@ public:
                     op_pose_pub.publish(current_op_pose);
 
                     // modifying scan to have the opponent car
-                    double diff_x = opponent_pose.x - scan_pose.x;
-                    double diff_y = opponent_pose.y - scan_pose.y;
-                    double diff_dist = std::sqrt(diff_x*diff_x + diff_y*diff_y);
-                    // TODO: change angle range so that it depends on the distance to the opponent
-                    //double angle_infl = 0.04;
-                    double angle_infl = 1./(10*diff_dist);
-                    double angle = -scan_pose.theta + std::atan2(diff_y, diff_x);
-                    if (angle < scan_simulator.get_field_of_view()/2. || angle > -scan_simulator.get_field_of_view()/2.) {
-                        double angle_inc = scan_simulator.get_angle_increment();
-                        double angle_min = -scan_simulator.get_field_of_view()/2.;
-                        int start_ind = static_cast<int>((angle-angle_infl-angle_min)/angle_inc);
-                        int end_ind = static_cast<int>((angle+angle_infl-angle_min)/angle_inc);
-                        for (int i=start_ind; i<=end_ind; i++) {
-                            if (scan_[i] > diff_dist) scan_[i] = diff_dist;
-                        }
-                    }
+                    ray_cast_opponent(scan_, scan_pose.x, scan_pose.y);
+
+
+                    // double diff_x = opponent_pose.x - scan_pose.x;
+                    // double diff_y = opponent_pose.y - scan_pose.y;
+                    // double diff_dist = std::sqrt(diff_x*diff_x + diff_y*diff_y);
+                    // // TODO: change angle range so that it depends on the distance to the opponent
+                    // //double angle_infl = 0.04;
+                    // double angle_infl = 1./(10*diff_dist);
+                    // double angle = -scan_pose.theta + std::atan2(diff_y, diff_x);
+                    // if (angle < scan_simulator.get_field_of_view()/2. || angle > -scan_simulator.get_field_of_view()/2.) {
+                    //     double angle_inc = scan_simulator.get_angle_increment();
+                    //     double angle_min = -scan_simulator.get_field_of_view()/2.;
+                    //     int start_ind = static_cast<int>((angle-angle_infl-angle_min)/angle_inc);
+                    //     int end_ind = static_cast<int>((angle+angle_infl-angle_min)/angle_inc);
+                    //     for (int i=start_ind; i<=end_ind; i++) {
+                    //         if (scan_[i] > diff_dist) scan_[i] = diff_dist;
+                    //     }
+                    // }
+
                 }
 
                 std::vector<float> op_scan_(op_scan.size());
@@ -962,6 +967,165 @@ public:
 
             // turn on joystick if active
             mux_controller[joy_mux_idx] = joy_on;
+        }
+
+        void ray_cast_opponent(std::vector<float> &scan, double x, double y) {
+            // modify the laser scan so it reflects the 
+            // opponent's car
+
+            // double op_x = opponent_pose.x;
+            // double op_y = opponent_pose.y;
+            // double op_th = opponent_pose.theta;
+
+            // unify the theta notation so it's bounded between 
+            // 0 and 2*PI
+            // theta normal is normal of car d, rotated
+            // PI/2 counter clock wise
+            double op_theta_normal = opponent_pose.theta + M_PI/2.0;
+            op_theta_normal = std::fmod(op_theta_normal, 2.0*M_PI);
+            op_theta_normal = op_theta_normal >= 0 ? op_theta_normal : op_theta_normal + 2.0*M_PI;
+            double op_theta = opponent_pose.theta;
+            op_theta = std::fmod(op_theta, 2.0*M_PI);
+            op_theta = op_theta >= 0 ? op_theta : op_theta + 2.0*M_PI;
+
+            double car_theta = std::fmod(state.theta, 2.0*M_PI);
+            car_theta = car_theta >= 0 ? car_theta : car_theta + 2.0*M_PI;
+
+            // unit_x pointing in car x coord
+
+            Eigen::Vector3d unit_x = Eigen::Vector3d(std::cos(car_theta), std::sin(car_theta), 0.);
+            unit_x = unit_x/unit_x.norm();
+            Eigen::Vector3d pos = Eigen::Vector3d(x, y, 0.);
+            Eigen::Vector3d op_pos = Eigen::Vector3d(opponent_pose.x, opponent_pose.y, 0.);
+            Eigen::Vector3d op_d = Eigen::Vector3d(std::cos(op_theta), std::sin(op_theta), 0.);
+            op_d = op_d/op_d.norm();
+            Eigen::Vector3d op_normal = Eigen::Vector3d(std::cos(op_theta_normal), std::sin(op_theta_normal), 0.);
+            op_normal = op_normal/op_normal.norm();
+            // four corners of the car
+            // p1: rear left of opponent
+            Eigen::Vector3d op_p1 = op_pos + op_normal * (width / 2.0);
+            // p2: rear right of opponent
+            Eigen::Vector3d op_p2 = op_pos - op_normal * (width / 2.0);
+            // p3: front right of opponent
+            Eigen::Vector3d op_p3 = op_p2 + scan_distance_to_base_link * op_d;
+            // p4: front left of opponent
+            Eigen::Vector3d op_p4 = op_p1 + scan_distance_to_base_link * op_d;
+
+            // ROS_INFO_STREAM("op_p1: " << op_p1(0) << ", " << op_p1(1) << " op_p2: " << op_p2(0) << ", " << op_p2(1) << " op_p3: " << op_p3(0) << ", " << op_p3(1) << " op_p4: " << op_p4(0) << ", " << op_p4(1));
+
+            // The four vectors connecting four corners and car pose
+            Eigen::Vector3d d1 = (op_p1-pos)/(op_p1-pos).norm();
+            Eigen::Vector3d d2 = (op_p2-pos)/(op_p2-pos).norm();
+            Eigen::Vector3d d3 = (op_p3-pos)/(op_p3-pos).norm();
+            Eigen::Vector3d d4 = (op_p4-pos)/(op_p4-pos).norm();
+
+            double sinang1 = (unit_x.cross(d1))(2);
+            double cosang1 = unit_x.dot(d1);
+            double ang1 = std::atan2(sinang1, cosang1);
+            // ang1 = ang1 >= 0 ? ang1 : ang1 + M_PI*2;
+
+            double sinang2 = (unit_x.cross(d2))(2);
+            double cosang2 = unit_x.dot(d2);
+            double ang2 = std::atan2(sinang2, cosang2);
+            // ang2 = ang2 >= 0 ? ang2 : ang2 + M_PI*2;
+
+            double sinang3 = (unit_x.cross(d3))(2);
+            double cosang3 = unit_x.dot(d3);
+            double ang3 = std::atan2(sinang3, cosang3);
+            // ang3 = ang3 >= 0 ? ang3 : ang3 + M_PI*2;
+
+            double sinang4 = (unit_x.cross(d4))(2);
+            double cosang4 = unit_x.dot(d4);
+            double ang4 = std::atan2(sinang4, cosang4);
+            // ang4 = ang4 >= 0 ? ang4 : ang4 + M_PI*2;
+
+            // ROS_INFO_STREAM(ang1 << " " << ang2 << " " << ang3 << " " << ang4);
+
+            // get index of each "beam"
+            int op_idx1 = (static_cast<int>((ang1+(scan_simulator.get_field_of_view()/2.))/scan_simulator.get_angle_increment()));
+            int op_idx2 = (static_cast<int>((ang2+(scan_simulator.get_field_of_view()/2.))/scan_simulator.get_angle_increment()));
+            int op_idx3 = (static_cast<int>((ang3+(scan_simulator.get_field_of_view()/2.))/scan_simulator.get_angle_increment()));
+            int op_idx4 = (static_cast<int>((ang4+(scan_simulator.get_field_of_view()/2.))/scan_simulator.get_angle_increment()));
+
+
+            // debug for control points for opponent
+            scan[op_idx1] = (op_p1-pos).norm();
+            scan[op_idx2] = (op_p2-pos).norm();
+            scan[op_idx3] = (op_p3-pos).norm();
+            scan[op_idx4] = (op_p4-pos).norm();
+
+
+            // line segment p1-p2
+            // int start_idx = std::min(op_idx1, op_idx2);
+            // Eigen::Vector3d start_pt = op_idx1 < op_idx2 ? op_p1 : op_p2;
+            // int end_idx = std::max(op_idx1, op_idx2);
+            // Eigen::Vector3d end_pt = op_idx1 < op_idx2 ? op_p2 : op_p1;
+            // for (int i=start_idx; i<=end_idx; i++) {
+            //     double scale = (double)(i-start_idx)/(end_idx-start_idx);
+            //     Eigen::Vector3d ray_hit = start_pt + scale*((end_pt-start_pt)/(end_pt-start_pt).norm());
+            //     double dist = (ray_hit-pos).norm();
+            //     if (dist < scan[i]) scan[i] = dist;
+            // }
+            // // line segment p2-p3
+            // start_idx = std::min(op_idx2, op_idx3);
+            // start_pt = op_idx2 < op_idx3 ? op_p2 : op_p3;
+            // end_idx = std::max(op_idx2, op_idx3);
+            // end_pt = op_idx2 < op_idx3 ? op_p3 : op_p2;
+            // for (int i=start_idx; i<=end_idx; i++) {
+            //     double scale = (i-start_idx)/(end_idx-start_idx);
+            //     Eigen::Vector3d ray_hit = start_pt + scale*((end_pt-start_pt)/(end_pt-start_pt).norm());
+            //     double dist = (ray_hit-pos).norm();
+            //     if (dist < scan[i]) scan[i] = dist;
+            // }
+            // // line segment p3-p4
+            // start_idx = std::min(op_idx3, op_idx4);
+            // start_pt = op_idx3 < op_idx4 ? op_p3 : op_p4;
+            // end_idx = std::max(op_idx3, op_idx4);
+            // end_pt = op_idx3 < op_idx4 ? op_p4 : op_p3;
+            // for (int i=start_idx; i<=end_idx; i++) {
+            //     double scale = (i-start_idx)/(end_idx-start_idx);
+            //     Eigen::Vector3d ray_hit = start_pt + scale*((end_pt-start_pt)/(end_pt-start_pt).norm());
+            //     double dist = (ray_hit-pos).norm();
+            //     if (dist < scan[i]) scan[i] = dist;
+            // }
+            // // line segment p4-p1
+            // start_idx = std::min(op_idx4, op_idx1);
+            // start_pt = op_idx4 < op_idx1 ? op_p4 : op_p1;
+            // end_idx = std::max(op_idx4, op_idx1);
+            // end_pt = op_idx4 < op_idx1 ? op_p1 : op_p4;
+            // for (int i=start_idx; i<=end_idx; i++) {
+            //     double scale = (i-start_idx)/(end_idx-start_idx);
+            //     Eigen::Vector3d ray_hit = start_pt + scale*((end_pt-start_pt)/(end_pt-start_pt).norm());
+            //     double dist = (ray_hit-pos).norm();
+            //     if (dist < scan[i]) scan[i] = dist;
+            // }
+
+
+
+
+
+
+            // std::vector<int> op_idx{{op_idx1, op_idx2, op_idx3, op_idx4}};
+            // int op_min_idx = *std::min_element(op_idx.begin(), op_idx.end());
+            // int op_max_idx = *std::max_element(op_idx.begin(), op_idx.end());
+            // // when the start and end of the laser scan should be considered
+            // if (op_max_idx - op_min_idx > 0.5*scan_simulator.get_num_beams()) {
+            //     for (int i=0; i<=op_min_idx; i++) {
+            //         // line segment p1-p2
+            //         if (i >= op_idx1 && i < op_idx2) {
+            //             double scale = 
+            //         }
+            //     }
+            //     for (int i=op_max_idx; i<scan.size(); i++) {
+            //         scan[i] = 1.0;
+            //     }
+            // } else {
+            //     for (int i=op_min_idx; i<=op_max_idx; i++) {
+            //         // in this range of the laser, ray cast to the nearest point
+            //         scan[i] = 1.0;
+            //     }
+            // }
+            // ROS_INFO("min_idx: %d, max_idx: %d", op_min_idx, op_max_idx);
         }
 
 
