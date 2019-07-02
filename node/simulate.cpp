@@ -810,6 +810,7 @@ public:
                     current_op_pose.pose.orientation.w = op_quat.w();
                     op_pose_pub.publish(current_op_pose);
 
+                    // modifying scan to have the opponent car
                     double diff_x = opponent_pose.x - scan_pose.x;
                     double diff_y = opponent_pose.y - scan_pose.y;
                     double diff_dist = std::sqrt(diff_x*diff_x + diff_y*diff_y);
