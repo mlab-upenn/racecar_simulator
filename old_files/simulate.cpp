@@ -1,4 +1,5 @@
 #include <ros/ros.h>
+#include <ros/package.h>
 
 // interactive marker
 #include <interactive_markers/interactive_marker_server.h>
@@ -10,7 +11,7 @@
 #include <nav_msgs/OccupancyGrid.h>
 #include <nav_msgs/Odometry.h>
 #include <std_msgs/Bool.h>
-#include <std_msgs/Int16MultiArray.h>
+#include <std_msgs/Int32MultiArray.h>
 
 #include <sensor_msgs/Image.h>
 
@@ -37,6 +38,7 @@
 
 #include <iostream>
 #include <math.h>
+#include <fstream>
 
 
 using namespace racecar_simulator;
@@ -81,7 +83,7 @@ private:
     // Joystick parameters
     int joy_speed_axis, joy_angle_axis;
     double joy_max_speed;
-    int joy_button_idx, assist_button_idx;
+    int joy_button_idx, copilot_button_idx, random_walk_button_idx;
 
     // A ROS node
     ros::NodeHandle n;
@@ -151,21 +153,22 @@ private:
     double joy_desired_steer;
     double joy_desired_velocity;
 
-    // is the driver assist active
-    bool dr_assist_on;
+    // is the safety copilot active
+    bool safety_copilot_on;
     // is joystick active
     bool joy_on;
 
     // set what is currently controlling the car
     std::vector<bool> mux_controller;
     int joy_mux_idx;
-    int dr_assist_mux_idx;
+    int safety_copilot_mux_idx;
+    int random_walker_mux_idx;
     int mux_size;
 
     // for demo
     std::vector<bool> prev_mux;
 
-    // for when driver assist gives control back
+    // for when safety copilot gives control back
     int prev_controller_idx;
 
     // pi
@@ -181,14 +184,18 @@ private:
     // publish mux controller
     ros::Publisher mux_pub;
 
+    // for collision logging
+    std::ofstream collision_file;
+    double beginning_seconds;
+    int collision_count=0;
 
 
 public:
 
+
     RacecarSimulator(): im_server("racecar_sim") {
         // Initialize the node handle
         n = ros::NodeHandle("~");
-
 
         // Initialize car state and driving commands
         state = {.x=0, .y=0, .theta=0, .velocity=0, .steer_angle=0.0, .angular_velocity=0.0, .slip_angle=0.0, .st_dyn=false};
@@ -257,7 +264,8 @@ public:
         // get mux idxs
         n.getParam("mux_size", mux_size);
         n.getParam("joy_mux_idx", joy_mux_idx);
-        n.getParam("dr_assist_mux_idx", dr_assist_mux_idx);
+        n.getParam("safety_copilot_mux_idx", safety_copilot_mux_idx);
+        n.getParam("random_walker_mux_idx", random_walker_mux_idx);
 
 
         // Get joystick parameters
@@ -266,7 +274,8 @@ public:
         n.getParam("joy_angle_axis", joy_angle_axis);
         n.getParam("joy_max_speed", joy_max_speed);
         n.getParam("joy_button_idx", joy_button_idx);
-        n.getParam("assist_button_idx", assist_button_idx);
+        n.getParam("copilot_button_idx", copilot_button_idx);
+        n.getParam("random_walk_button_idx", random_walk_button_idx);
 
         // Determine if we should broadcast
         n.getParam("broadcast_transform", broadcast_transform);
@@ -458,12 +467,14 @@ public:
             prev_mux[i] = false;
         }
 
-        mux_controller[joy_mux_idx] = true;
+        int starter = joy_mux_idx;
 
-        dr_assist_on = true;
+        mux_controller[starter] = true;
+
+        safety_copilot_on = true;
 
         // default is joy (could change)
-        prev_controller_idx = joy_mux_idx;
+        prev_controller_idx = starter;
 
         n.getParam("ttc_threshold", ttc_threshold);
 
@@ -505,11 +516,17 @@ public:
             }
         }
 
-        mux_pub = n.advertise<std_msgs::Int16MultiArray>(mux_topic, 10);
+        
+        mux_pub = n.advertise<std_msgs::Int32MultiArray>(mux_topic, 10);
+
+        std::string filename;
+        n.getParam("collision_file", filename);
+        collision_file.open(ros::package::getPath("racecar_simulator") + "/logs/" + filename + ".txt");
+
+        ros::Time timestamp = ros::Time::now();
+        beginning_seconds = timestamp.toSec();
 
     }
-
-
 
 
 
@@ -560,22 +577,7 @@ public:
         void update_pose(const ros::TimerEvent&) {
 
 
-            // if in collision
-            if (TTC) {
-
-            }
-
-            // std_msgs::Int16MultiArray mux_msg;
-            // mux_msg.data [mux_size];
-            // std::cout << mux_msg.data[0] << std::endl;
-            // for (int i = 0; i < mux_size; i++) {
-            // 	std::cout << int(mux_controller[i]) << std::endl;
-            // 	mux_msg.data[i] = int(mux_controller[i]);
-            // }
-            // mux_pub.publish(mux_msg);
-
-
-
+            /// KEEP in sim, but compute accel and steer angle vel every update
             // set latest joystick commands
             if (mux_controller[joy_mux_idx]) {
                 set_accel(compute_accel(joy_desired_velocity));
@@ -583,25 +585,31 @@ public:
             }
 
 
+            /// MOVE TO: mux
             // Prints the mux whenever it is changed
             bool changed = false;
+            // checks if nothing is on
+            bool anything_on = false;
             for (int i = 0; i < mux_size; i++) {
                 changed = changed || (mux_controller[i] != prev_mux[i]);
+                anything_on = anything_on || mux_controller[i];
             }
             if (changed) {
+                std::cout << "MUX: " << std::endl;
                 for (int i = 0; i < mux_size; i++) {
                     std::cout << mux_controller[i] << std::endl;
                     prev_mux[i] = mux_controller[i];
                 }
                 std::cout << std::endl;
             }
+            if (!anything_on) {
+                // if no mux channel is active, halt the car
+                set_accel(compute_accel(0.0));
+                set_steer_angle_vel(compute_steer_vel(0.0));
+            }
 
-            std::cout << "max_vel: " << max_speed << std::endl;
-            std::cout << "max_accel: " << max_accel << std::endl;
-            std::cout << "vel: " << state.velocity << std::endl;
-            std::cout << "accel: " << accel << std::endl;
-            std::cout << std::endl;
 
+            /// KEEP in sim
             // Update the pose
             ros::Time timestamp = ros::Time::now();
             double current_seconds = timestamp.toSec();
@@ -627,7 +635,7 @@ public:
             previous_seconds = current_seconds;
 
 
-
+            /// KEEP in sim (helper function)
             // Convert the pose into a transformation
             geometry_msgs::Transform t;
             t.translation.x = state.x;
@@ -665,6 +673,7 @@ public:
             op_ts.header.frame_id = map_frame;
             op_ts.child_frame_id = op_base_frame;
 
+            /// KEEP in sim (helper function)
             // Make an odom message as well
             nav_msgs::Odometry odom;
             odom.header.stamp = timestamp;
@@ -677,9 +686,8 @@ public:
             odom.pose.pose.orientation.z = quat.z();
             odom.pose.pose.orientation.w = quat.w();
             odom.twist.twist.linear.x = state.velocity;
-            odom.twist.twist.angular.z =
-                    AckermannKinematics::angular_velocity(state.velocity, state.steer_angle, params.wheelbase);
-            // **** CHANGE TO NEW ANGULAR VELOCITY DYNAMICS*****
+            odom.twist.twist.angular.z = state.angular_velocity;
+            
 
             // opponent odom message
             nav_msgs::Odometry op_odom;
@@ -693,10 +701,9 @@ public:
             op_odom.pose.pose.orientation.z = op_quat.z();
             op_odom.pose.pose.orientation.w = op_quat.w();
             op_odom.twist.twist.linear.x = opponent_pose.velocity;
-            op_odom.twist.twist.angular.z =
-                    AckermannKinematics::angular_velocity(opponent_pose.velocity, opponent_pose.steer_angle, params.wheelbase);
+            op_odom.twist.twist.angular.z = state.angular_velocity;
 
-
+            /// KEEP in sim (helper function)
             // Publish them
             if (broadcast_transform) {
                 br.sendTransform(ts);
@@ -705,6 +712,7 @@ public:
             odom_pub.publish(odom);
             op_odom_pub.publish(op_odom);
 
+            /// KEEP in sim (helper function)
             // Set the steering angle to make the wheels move
             // Publish the steering angle
             tf2::Quaternion quat_wheel;
@@ -740,7 +748,7 @@ public:
 
 
 
-
+            /// KEEP in sim
             // If we have a map, perform a scan
             if (map_exists) {
                 // Get the pose of the lidar, given the pose of base link
@@ -790,7 +798,7 @@ public:
                     op_scan_[i] = op_scan[i];
 
 
-
+                /// KEEP in sim (but update all this stuff at some point) (Make TTC message)
                 // Publish to collision channel
                 racecar_simulator::Collision coll_msg;
                 coll_msg.in_danger = false;
@@ -812,11 +820,18 @@ public:
                                 first_ttc_actions();
                             }
 
+                            collision_count++;
                             no_collision = false;
                             TTC = true;
-                            std::cout << "Collision!" << std::endl;
+                            ROS_INFO("Collision detected");
                             std::cout << "Angle: " << angle << std::endl;
                             std::cout << "TTC: " << ttc << std::endl << std::endl;
+                            collision_file << "Collision #" << collision_count << " detected:\n";
+                            collision_file << "TTC: " << ttc << " seconds\n";
+                            collision_file << "Angle to obstacle: " << angle << " radians\n";
+                            collision_file << "Time since start of sim: " << (current_seconds - beginning_seconds) << " seconds\n";
+                            collision_file << "\n";
+                            
                         }
 
                     }
@@ -835,22 +850,14 @@ public:
                     }
                 }
 
-                // opponent collision (not used for now)
-                //             if (!TTC &  check_opponent_collision() {
-                //               first_ttc_actions();
-                //             }
-
-
                 // reset TTC
                 if (no_collision)
                     TTC = false;
 
-
-
-                coll_msg.dr_assist_active = dr_assist_on && (!TTC);
                 coll_msg.speed = state.velocity;
                 coll_pub.publish(coll_msg);
 
+                /// KEEP in sim
                 // Publish the laser message
                 sensor_msgs::LaserScan scan_msg;
                 scan_msg.header.stamp = timestamp;
@@ -877,7 +884,7 @@ public:
                 op_scan_pub.publish(op_scan_msg);
 
 
-
+                /// KEEP in sim (helper function)
                 // Publish a transformation between base link and laser
                 geometry_msgs::TransformStamped scan_ts;
                 scan_ts.transform.translation.x = scan_distance_to_base_link;
@@ -895,8 +902,9 @@ public:
                 op_scan_ts.child_frame_id = op_scan_frame;
                 op_br.sendTransform(op_scan_ts);
             }
-        }
+        } //end of update_pose
 
+        /// KEEP in sim
         void first_ttc_actions() {
             joy_desired_velocity = 0.0;
             joy_desired_steer = 0.0;
@@ -909,18 +917,19 @@ public:
             steer_angle_vel = 0.0;
             accel = 0.0;
 
-            // kill mux (except joystick)
+            // kill mux
             for (int i = 0; i < mux_size; i++) {
-                if (i == joy_mux_idx)
-                    continue;
                 mux_controller[i] = false;
             }
 
             // turn on joystick if active
             mux_controller[joy_mux_idx] = joy_on;
+
+            // turn off safety copilot
+            safety_copilot_on = false;
         }
 
-
+        /// KEEP in sim
         void project_opponent() {
             // clear projection from last frame
             double prev_x = previous_opponent_pose.x;
@@ -935,7 +944,7 @@ public:
             add_obs(ind);
         }
 
-
+        /// KEEP in sim
         void obs_callback(const geometry_msgs::PointStamped &msg) {
             double x = msg.point.x;
             double y = msg.point.y;
@@ -946,7 +955,7 @@ public:
         }
 
 
-
+        /// KEEP in sim
         void pose_callback(const geometry_msgs::PoseStamped & msg) {
             state.x = msg.pose.position.x;
             state.y = msg.pose.position.y;
@@ -956,7 +965,7 @@ public:
         }
 
 
-
+        /// KEEP in sim
         void op_pose_callback(const geometry_msgs::PoseStamped &msg) {
             opponent_pose.x = msg.pose.position.x;
             opponent_pose.y = msg.pose.position.y;
@@ -965,6 +974,7 @@ public:
             opponent_pose.theta = tf2::impl::getYaw(quat);
         }
 
+        /// KEEP in sim
         void pose_rviz_callback(const geometry_msgs::PoseWithCovarianceStamped::ConstPtr & msg) {
 
             geometry_msgs::PoseStamped temp_pose;
@@ -973,21 +983,25 @@ public:
             pose_callback(temp_pose);
         }
 
+        /// KEEP in sim
         void op_pose_rviz_callback(const geometry_msgs::PoseStamped::ConstPtr &msg) {
             op_pose_callback(*msg);
 
         }
 
+        /// KEEP in sim
         void drive_callback(const ackermann_msgs::AckermannDriveStamped & msg) {
             set_accel(compute_accel(msg.drive.speed));
             set_steer_angle_vel(compute_steer_vel(msg.drive.steering_angle));
         }
 
+        /// KEEP in sim
         void op_drive_callback(const ackermann_msgs::AckermannDriveStamped &msg) {
             set_op_accel(msg.drive.speed);
             set_op_steer_angle_vel(compute_steer_vel(msg.drive.steering_angle));
         }
 
+        /// MOVE TO: behavior control node
         void joy_callback(const sensor_msgs::Joy & msg) {
 
             // joy controller:
@@ -999,24 +1013,24 @@ public:
 
 
             // changing mux_controller:
-            if (msg.buttons[assist_button_idx]) {
-                if (dr_assist_on) {
-                    std::cout << "Driver Assist turned off" << std::endl;
-                    dr_assist_on = false;
-                    // switch control to previous controller if driver assist was on
-                    if (mux_controller[dr_assist_mux_idx]) {
-                        mux_controller[dr_assist_mux_idx] = false;
+            if (msg.buttons[copilot_button_idx]) {
+                if (safety_copilot_on) {
+                    std::cout << "Safety Copilot turned off" << std::endl << std::endl;
+                    safety_copilot_on = false;
+                    // switch control to previous controller if safety copilot was on
+                    if (mux_controller[safety_copilot_mux_idx]) {
+                        mux_controller[safety_copilot_mux_idx] = false;
                         mux_controller[prev_controller_idx] = true;
                     }
                 }
                 else {
-                    std::cout << "Driver Assist turned on" << std::endl;
-                    dr_assist_on = true;
+                    std::cout << "Safety Copilot turned on" << std::endl << std::endl;
+                    safety_copilot_on = true;
                 }
             }
             else if (msg.buttons[joy_button_idx]) {
                 if (joy_on) {
-                    std::cout << "Joystick turned off" << std::endl;
+                    std::cout << "Joystick turned off" << std::endl << std::endl;
                     joy_on = false;
                     mux_controller[joy_mux_idx] = false;
                     // previous controller on ?
@@ -1024,19 +1038,43 @@ public:
                     // have some other idea when there's actually something else
                 }
                 else {
-                    std::cout << "Joystick turned on" << std::endl;
+                    std::cout << "Joystick turned on" << std::endl << std::endl;
                     joy_on = true;
+                    // turn everything off
+                    for (int i = 0; i < mux_size; i++) {
+                        mux_controller[i] = false;
+                    }
+                    // turn on joystick
                     mux_controller[joy_mux_idx] = true;
+                }
+            }
+            else if (msg.buttons[random_walk_button_idx]) {
+                if (mux_controller[random_walker_mux_idx]) {
+                    std::cout << "Random Walk turned off" << std::endl << std::endl;
+                    // turn off random walker
+                    mux_controller[random_walker_mux_idx] = false;
+                    // turn on joystick if it's active
+                    mux_controller[joy_mux_idx] = joy_on;
+                }
+                else {
+                    std::cout << "Random Walk turned on" << std::endl << std::endl;
+                    // turn everything off
+                    for (int i = 0; i < mux_size; i++) {
+                        mux_controller[i] = false;
+                    }
+                    // turn on random walker
+                    mux_controller[random_walker_mux_idx] = true; 
                 }
             }
         }
 
+        /// MOVE TO: behavioral control node
         void coll_callback(const racecar_simulator::Collision & msg) {
-            // change mux controller so driver assist takes over
-            if (dr_assist_on && msg.in_danger && !TTC) {
+            // change mux controller so safety copilot takes over
+            if (safety_copilot_on && msg.in_danger && !TTC) {
                 // turn off prev controller and remember its index
                 for (int i = 0; i < mux_size; i++) {
-                    if (i == dr_assist_mux_idx)
+                    if (i == safety_copilot_mux_idx)
                         continue;
                     if (mux_controller[i]) {
                         prev_controller_idx = i;
@@ -1044,28 +1082,29 @@ public:
                         break;
                     }
                 }
-                mux_controller[dr_assist_mux_idx] = true;
+                mux_controller[safety_copilot_mux_idx] = true;
             }
 
             // if no longer in danger, give control back to previous controller
-            if (!msg.in_danger && mux_controller[dr_assist_mux_idx]) {
+            if (!msg.in_danger && mux_controller[safety_copilot_mux_idx]) {
                 mux_controller[prev_controller_idx] = true;
-                mux_controller[dr_assist_mux_idx] = false;
+                mux_controller[safety_copilot_mux_idx] = false;
             }
 
-
-            // assisting done in separate driver assist node
+            // computation done in separate safety copilot node
         }
 
-
+        /// KEEP in sim
         void set_accel(double accel_) {
             accel = std::min(std::max(accel_, -max_accel), max_accel);
         }
 
+        /// KEEP in sim
         void set_steer_angle_vel(double steer_angle_vel_) {
             steer_angle_vel = std::min(std::max(steer_angle_vel_, -max_steering_vel), max_steering_vel);
         }
 
+        /// KEEP in sim
         void add_obs(int ind) {
             std::vector<int> rc = ind_2_rc(ind);
             for (int i=-obstacle_size; i<obstacle_size; i++) {
@@ -1079,6 +1118,7 @@ public:
             map_pub.publish(current_map);
         }
 
+        /// KEEP in sim
         void clear_obs(int ind) {
             std::vector<int> rc = ind_2_rc(ind);
             for (int i=-obstacle_size; i<obstacle_size; i++) {
@@ -1093,7 +1133,8 @@ public:
             map_pub.publish(current_map);
         }
 
-        // button callbaccks
+        /// KEEP in sim
+        // button callbacks
         void clear_obstacles(const visualization_msgs::InteractiveMarkerFeedbackConstPtr &feedback) {
             bool clear_obs_clicked = false;
             if (feedback->event_type == 3) {
@@ -1107,6 +1148,8 @@ public:
                 clear_obs_clicked = false;
             }
         }
+
+        /// KEEP in sim
         void spawn_car(const visualization_msgs::InteractiveMarkerFeedbackConstPtr &feedback) {
             bool spawn_car_clicked = false;
             if (feedback->event_type == 3) {
@@ -1118,6 +1161,8 @@ public:
                 opponent_spawned = true;
             }
         }
+
+        /// KEEP in sim
         void despawn_car(const visualization_msgs::InteractiveMarkerFeedbackConstPtr &feedback) {
             bool despawn_car_clicked = false;
             if (feedback->event_type == 3) {
@@ -1130,55 +1175,17 @@ public:
             }
         }
 
-
+        /// KEEP in sim
         void set_op_accel(double accel_) {
             opponent_accel = std::min(std::max(accel_, -max_accel), max_accel);
         }
 
-//        void set_steering_angle(double steering_angle_, ros::Time timestamp) {
-//            steering_angle = std::min(std::max(steering_angle_, -max_steering_angle), max_steering_angle);
-
-//            // Publish the steering angle
-//            tf2::Quaternion quat;
-//            quat.setEuler(0., 0., steering_angle);
-//            geometry_msgs::TransformStamped ts;
-//            ts.transform.rotation.x = quat.x();
-//            ts.transform.rotation.y = quat.y();
-//            ts.transform.rotation.z = quat.z();
-//            ts.transform.rotation.w = quat.w();
-//            ts.header.stamp = timestamp;
-//            ts.header.frame_id = "front_left_hinge";
-//            ts.child_frame_id = "front_left_wheel";
-//            br.sendTransform(ts);
-//            ts.header.frame_id = "front_right_hinge";
-//            ts.child_frame_id = "front_right_wheel";
-//            br.sendTransform(ts);
-//        }
-
+        /// KEEP in sim
         void set_op_steer_angle_vel(double steer_angle_vel_) {
             opponent_steer_angle_vel = std::min(std::max(steer_angle_vel_, -max_steering_vel), max_steering_vel);
         }
 
-//        void set_op_steering_angle(double steering_angle_, ros::Time timestamp) {
-//            opponent_pose.steer_angle = std::min(std::max(steering_angle_, -max_steering_angle), max_steering_angle);
-
-//            // Publish the steering angle
-//            tf2::Quaternion quat;
-//            quat.setEuler(0., 0., steering_angle);
-//            geometry_msgs::TransformStamped ts;
-//            ts.transform.rotation.x = quat.x();
-//            ts.transform.rotation.y = quat.y();
-//            ts.transform.rotation.z = quat.z();
-//            ts.transform.rotation.w = quat.w();
-//            ts.header.stamp = timestamp;
-//            ts.header.frame_id = "op_front_left_hinge";
-//            ts.child_frame_id = "op_front_left_wheel";
-//            op_br.sendTransform(ts);
-//            ts.header.frame_id = "op_front_right_hinge";
-//            ts.child_frame_id = "op_front_right_wheel";
-//            op_br.sendTransform(ts);
-//        }
-
+        /// KEEP in sim
         void map_callback(const nav_msgs::OccupancyGrid & msg) {
             // Fetch the map parameters
             size_t height = msg.info.height;
@@ -1213,6 +1220,7 @@ public:
             map_exists = true;
         }
 
+        /// KEEP in sim
         double compute_steer_vel(double desired_angle) {
             // get difference between current and desired
             double dif = (desired_angle - state.steer_angle);
@@ -1228,6 +1236,7 @@ public:
             return steer_vel;
         }
 
+        /// KEEP in sim
         double compute_accel(double desired_velocity) {
             // get difference between current and desired
             double dif = (desired_velocity - state.velocity);
