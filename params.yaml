@@ -77,6 +77,9 @@ random_walk_key_char: "r"
 # **Add button for new planning method here**
 new_key_char: "z"
 
+# Keyboard driving params
+keyboard_speed: 1.8  # meters/second
+keyboard_steer_ang: .3  # radians
 
 # map-collision parameters
 inflation_size: 5

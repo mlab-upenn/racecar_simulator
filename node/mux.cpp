@@ -46,6 +46,8 @@ private:
     double max_speed, max_steering_angle;
     // For keyboard driving
     double prev_key_velocity=0.0;
+    double keyboard_speed;
+    double keyboard_steer_ang;
 
 
 public:
@@ -79,6 +81,10 @@ public:
         n.getParam("joy_angle_axis", joy_angle_axis);
         n.getParam("max_steering_angle", max_steering_angle);
         n.getParam("max_speed", max_speed);
+
+        // get params for keyboard driving
+        n.getParam("keyboard_speed", keyboard_speed);
+        n.getParam("keyboard_steer_ang", keyboard_steer_ang);
 
         // get size of mux
         n.getParam("mux_size", mux_size);
@@ -184,17 +190,17 @@ public:
 
             if (msg.data == "w") {
                 // Forward
-                desired_velocity = 2.0; // a good speed for keyboard control
+                desired_velocity = keyboard_speed; // a good speed for keyboard control
             } else if (msg.data == "s") {
                 // Backwards
-                desired_velocity = -2.0;
+                desired_velocity = -keyboard_speed;
             } else if (msg.data == "a") {
                 // Steer left and keep speed
-                desired_steer = max_steering_angle;
+                desired_steer = keyboard_steer_ang;
                 desired_velocity = prev_key_velocity;
             } else if (msg.data == "d") {
                 // Steer right and keep speed
-                desired_steer = -max_steering_angle;
+                desired_steer = -keyboard_steer_ang;
                 desired_velocity = prev_key_velocity;
             } else if (msg.data == " ") {
                 // publish zeros to slow down/straighten out car
