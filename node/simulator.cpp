@@ -54,7 +54,7 @@ private:
     double previous_seconds;
     double scan_distance_to_base_link;
     double max_speed, max_steering_angle;
-    double max_accel, max_steering_vel;
+    double max_accel, max_steering_vel, max_decel;
     double desired_speed, desired_steer_ang;
     double accel, steer_angle_vel;
     CarParams params;
@@ -162,6 +162,7 @@ public:
         n.getParam("max_speed", max_speed);
         n.getParam("max_steering_angle", max_steering_angle);
         n.getParam("max_accel", max_accel);
+        n.getParam("max_decel", max_decel);
         n.getParam("max_steering_vel", max_steering_vel);
         n.getParam("friction_coeff", params.friction_coeff);
         n.getParam("height_cg", params.h_cg);
@@ -463,8 +464,6 @@ public:
         else {
             steer_vel = 0;
         }
-            
-
 
         return steer_vel;
     }
@@ -473,7 +472,24 @@ public:
         // get difference between current and desired
         double dif = (desired_velocity - state.velocity);
 
-        double kp = 2.0 * max_accel / max_speed;
+        double kp;
+        if (state.velocity > 0) {
+            if (dif > 0) {
+                // accelerate
+                kp = 2.0 * max_accel / max_speed;
+            } else {
+                // brake
+                kp = 2.0 * max_decel / max_speed;
+            }    
+        } else {
+            if (dif > 0) {
+                // brake
+                kp = 2.0 * max_decel / max_speed;
+            } else {
+                // accelerate
+                kp = 2.0 * max_accel / max_speed;
+            }   
+        }
 
         // calculate acceleration
         double acceleration = kp * dif;
