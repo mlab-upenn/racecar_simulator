@@ -289,7 +289,8 @@ public:
         /// TODO: *****FUNCTION DETAILS*****
 
         // simulate PID controller
-        set_accel(compute_accel(desired_speed));
+        // set_accel(compute_accel(desired_speed));
+        compute_accel(desired_speed);
         set_steer_angle_vel(compute_steer_vel(desired_steer_ang));
 
         // Update the pose
@@ -472,7 +473,7 @@ public:
         return steer_vel;
     }
 
-    double compute_accel(double desired_velocity) {
+    void compute_accel(double desired_velocity) {
         // get difference between current and desired
         double dif = (desired_velocity - state.velocity);
 
@@ -481,26 +482,24 @@ public:
             if (dif > 0) {
                 // accelerate
                 kp = 2.0 * max_accel / max_speed;
+                set_accel(kp*dif);
             } else {
                 // brake
                 kp = 2.0 * max_decel / max_speed;
-                return -max_decel; 
+                accel = -max_decel; 
             }    
         } else {
             if (dif > 0) {
                 // brake
                 kp = 2.0 * max_decel / max_speed;
-                return max_decel;
+                accel = max_decel;
 
             } else {
                 // accelerate
                 kp = 2.0 * max_accel / max_speed;
+                set_accel(kp*dif);
             }   
         }
-
-        // calculate acceleration
-        double acceleration = kp * dif;
-        return acceleration;
     }
 
         /// ---------------------- CALLBACK FUNCTIONS ----------------------

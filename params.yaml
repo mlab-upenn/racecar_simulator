@@ -8,7 +8,7 @@ width: 0.2032 # meters
 max_speed: 4. #  meters/second
 max_steering_angle: 0.4189 # radians
 max_accel: 3. # meters/second^2
-max_decel: 50000000 # meters/second^2
+max_decel: 20 # meters/second^2
 max_steering_vel: 5.0 # radians/second
 friction_coeff: 1. # - (complete estimate)
 height_cg: 0.08255 # m (roughly measured to be 3.25 in)
