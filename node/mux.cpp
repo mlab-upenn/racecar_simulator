@@ -21,8 +21,6 @@ private:
     // Listen for messages from joystick and keyboard
     ros::Subscriber joy_sub;
     ros::Subscriber key_sub;
-    ros::Subscriber brake_sub;
-    ros::Subscriber nav_sub;
 
     // Publish drive data to simulator/car
     ros::Publisher drive_pub;
@@ -78,10 +76,6 @@ public:
         // Start subscribers to listen to joy and keyboard messages
         joy_sub = n.subscribe(joy_topic, 1, &Mux::joy_callback, this);
         key_sub = n.subscribe(key_topic, 1, &Mux::key_callback, this);
-
-        // brake and nav subs
-        nav_sub = n.subscribe(nav_drive_topic, 1, &Mux::nav_callback, this);
-        brake_sub = n.subscribe(brake_drive_topic, 1, &Mux::brake_callback, this);
 
         // get mux indices
         n.getParam("joy_mux_idx", joy_mux_idx);
@@ -182,20 +176,6 @@ public:
         if (!anything_on) {
             // if no mux channel is active, halt the car
             publish_to_drive(0.0, 0.0);
-        }
-    }
-
-    void brake_callback(const ackermann_msgs::AckermannDriveStamped &msg) {
-        // brake if brake mux turned on
-        if (mux_controller[brake_mux_idx]) {
-            publish_to_drive(0.0, 0.0);
-        }
-    }
-
-    void nav_callback(const ackermann_msgs::AckermannDriveStamped &msg) {
-        // reroute nav msgs
-        if (mux_controller[nav_mux_idx]) {
-            publish_to_drive(msg.drive.speed, msg.drive.steering_angle);
         }
     }
 

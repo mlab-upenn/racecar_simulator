@@ -8,7 +8,7 @@ width: 0.2032 # meters
 max_speed: 4. #  meters/second
 max_steering_angle: 0.4189 # radians
 max_accel: 3. # meters/second^2
-max_decel: 20 # meters/second^2
+max_decel: 50000000 # meters/second^2
 max_steering_vel: 5.0 # radians/second
 friction_coeff: 1. # - (complete estimate)
 height_cg: 0.08255 # m (roughly measured to be 3.25 in)
@@ -20,7 +20,7 @@ mass: 3.17 # kg (measured on car 'lidart')
 moment_inertia: .0398378 # kg m^2 (estimated as a rectangle with width and height of car and evenly distributed mass, then shifted to account for center of mass location)
 
 # clip velocity
-speed_clip_diff: 0.01
+speed_clip_diff: 0.1
 
 # The rate at which the pose and the lidar publish
 update_pose_rate: 0.001

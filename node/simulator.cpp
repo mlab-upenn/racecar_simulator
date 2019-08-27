@@ -484,11 +484,14 @@ public:
             } else {
                 // brake
                 kp = 2.0 * max_decel / max_speed;
+                return -max_decel; 
             }    
         } else {
             if (dif > 0) {
                 // brake
                 kp = 2.0 * max_decel / max_speed;
+                return max_decel;
+
             } else {
                 // accelerate
                 kp = 2.0 * max_accel / max_speed;
@@ -497,14 +500,6 @@ public:
 
         // calculate acceleration
         double acceleration = kp * dif;
-
-        // clip velocity
-        // TODO: hacky
-        // if (std::fabs(dif) <= speed_clip_diff) {
-        //     state.velocity = std::max(std::min(max_speed, desired_velocity), -max_speed);
-        //     return 0.0;
-        // }
-
         return acceleration;
     }
 
