@@ -100,6 +100,7 @@ private:
 
     // safety margin for collisions
     double thresh;
+    double speed_clip_diff;
 
     // precompute cosines of scan angles
     std::vector<double> cosines;
@@ -173,6 +174,9 @@ public:
         n.getParam("moment_inertia", params.I_z);
         n.getParam("mass", params.mass);
         n.getParam("width", width);
+
+        // clip velocity
+        n.getParam("speed_clip_diff", speed_clip_diff);
 
         // Determine if we should broadcast
         n.getParam("broadcast_transform", broadcast_transform);
@@ -493,6 +497,13 @@ public:
 
         // calculate acceleration
         double acceleration = kp * dif;
+
+        // clip velocity
+        // TODO: hacky
+        // if (std::fabs(dif) <= speed_clip_diff) {
+        //     state.velocity = std::max(std::min(max_speed, desired_velocity), -max_speed);
+        //     return 0.0;
+        // }
 
         return acceleration;
     }

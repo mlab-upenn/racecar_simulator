@@ -8,7 +8,7 @@ width: 0.2032 # meters
 max_speed: 4. #  meters/second
 max_steering_angle: 0.4189 # radians
 max_accel: 3. # meters/second^2
-max_decel: 10 # meters/second^2
+max_decel: 20 # meters/second^2
 max_steering_vel: 5.0 # radians/second
 friction_coeff: 1. # - (complete estimate)
 height_cg: 0.08255 # m (roughly measured to be 3.25 in)
@@ -18,6 +18,9 @@ C_S_front: 2.3 #.79 # 1/rad ? (estimated weight/4)
 C_S_rear: 2.3 #.79 # 1/rad ? (estimated weight/4)
 mass: 3.17 # kg (measured on car 'lidart')
 moment_inertia: .0398378 # kg m^2 (estimated as a rectangle with width and height of car and evenly distributed mass, then shifted to account for center of mass location)
+
+# clip velocity
+speed_clip_diff: 0.01
 
 # The rate at which the pose and the lidar publish
 update_pose_rate: 0.001
@@ -47,11 +50,13 @@ ttc_threshold: 0.01
 coll_threshold: 0.6
 
 # Indices for mux controller
-mux_size: 4
+mux_size: 6
 joy_mux_idx: 0
 key_mux_idx: 1
 safety_copilot_mux_idx: 2
 random_walker_mux_idx: 3
+brake_mux_idx: 4
+nav_mux_idx: 5
 # **Add index for new planning method here**
 # **(increase mux_size accordingly)**
 new_method_mux_idx: -1
@@ -60,13 +65,14 @@ new_method_mux_idx: -1
 joy: true
 # Joystick indices
 joy_speed_axis: 1
-joy_angle_axis: 2
+joy_angle_axis: 3
 joy_max_speed: 2. # meters/second
 # Joystick indices for toggling mux
 joy_button_idx: 4  # LB button
 key_button_idx: 6 # not sure 
 copilot_button_idx: 0 # A button
-random_walk_button_idx: 5 # RB button
+random_walk_button_idx: 1 # ? button
+nav_button_idx: 5 # RB button
 # **Add button for new planning method here**
 new_button_idx: -1
 
@@ -75,6 +81,7 @@ joy_key_char: "j"
 keyboard_key_char: "k"
 copilot_key_char: "p"
 random_walk_key_char: "r"
+nav_key_char: "n"
 # **Add button for new planning method here**
 new_key_char: "z"
 
@@ -99,10 +106,13 @@ odom_topic: "/odom"
 imu_topic: "/imu"
 pose_rviz_topic: "/initialpose"
 keyboard_topic: "/key"
+brake_bool_topic: "/brake_bool"
 mux_topic: "/mux"
 
 # Topic names of various drive channels
 rand_drive_topic: "/rand_drive"
+brake_drive_topic: "/brake"
+nav_drive_topic: "/nav"
 # **Add name for new planning method here**
 new_drive_topic: "/new_drive"
 

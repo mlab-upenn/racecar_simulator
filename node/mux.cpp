@@ -2,6 +2,7 @@
 
 #include <ackermann_msgs/AckermannDriveStamped.h>
 #include <ackermann_msgs/AckermannDrive.h>
+#include <std_msgs/Bool.h>
 #include <std_msgs/Header.h>
 #include <std_msgs/Int32MultiArray.h>
 #include <sensor_msgs/Joy.h>
@@ -20,6 +21,8 @@ private:
     // Listen for messages from joystick and keyboard
     ros::Subscriber joy_sub;
     ros::Subscriber key_sub;
+    ros::Subscriber brake_sub;
+    ros::Subscriber nav_sub;
 
     // Publish drive data to simulator/car
     ros::Publisher drive_pub;
@@ -27,6 +30,8 @@ private:
     // Mux indices
     int joy_mux_idx;
     int key_mux_idx;
+    int brake_mux_idx;
+    int nav_mux_idx;
 
     // Mux controller array
     std::vector<bool> mux_controller;
@@ -56,11 +61,13 @@ public:
         n = ros::NodeHandle("~");
 
         // get topic names
-        std::string drive_topic, mux_topic, joy_topic, key_topic;
+        std::string drive_topic, mux_topic, joy_topic, key_topic, nav_drive_topic, brake_drive_topic;
         n.getParam("drive_topic", drive_topic);
         n.getParam("mux_topic", mux_topic);
         n.getParam("joy_topic", joy_topic);
         n.getParam("keyboard_topic", key_topic);
+        n.getParam("nav_drive_topic", nav_drive_topic);
+        n.getParam("brake_drive_topic", brake_drive_topic);
 
         // Make a publisher for drive messages
         drive_pub = n.advertise<ackermann_msgs::AckermannDriveStamped>(drive_topic, 10);
@@ -72,9 +79,15 @@ public:
         joy_sub = n.subscribe(joy_topic, 1, &Mux::joy_callback, this);
         key_sub = n.subscribe(key_topic, 1, &Mux::key_callback, this);
 
+        // brake and nav subs
+        nav_sub = n.subscribe(nav_drive_topic, 1, &Mux::nav_callback, this);
+        brake_sub = n.subscribe(brake_drive_topic, 1, &Mux::brake_callback, this);
+
         // get mux indices
         n.getParam("joy_mux_idx", joy_mux_idx);
         n.getParam("key_mux_idx", key_mux_idx);
+        n.getParam("brake_mux_idx", brake_mux_idx);
+        n.getParam("nav_mux_idx", nav_mux_idx);
 
         // get params for joystick calculations
         n.getParam("joy_speed_axis", joy_speed_axis);
@@ -98,6 +111,10 @@ public:
         }
 
         channels = std::vector<Channel*>();
+
+        // channel for braking and nav
+        add_channel(nav_drive_topic, drive_topic, nav_mux_idx);
+        add_channel(brake_drive_topic, drive_topic, brake_mux_idx);
 
         /// Add new channels here:
         int random_walker_mux_idx;
@@ -165,6 +182,20 @@ public:
         if (!anything_on) {
             // if no mux channel is active, halt the car
             publish_to_drive(0.0, 0.0);
+        }
+    }
+
+    void brake_callback(const ackermann_msgs::AckermannDriveStamped &msg) {
+        // brake if brake mux turned on
+        if (mux_controller[brake_mux_idx]) {
+            publish_to_drive(0.0, 0.0);
+        }
+    }
+
+    void nav_callback(const ackermann_msgs::AckermannDriveStamped &msg) {
+        // reroute nav msgs
+        if (mux_controller[nav_mux_idx]) {
+            publish_to_drive(msg.drive.speed, msg.drive.steering_angle);
         }
     }
 

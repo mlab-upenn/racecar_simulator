@@ -2,6 +2,7 @@
 #include <ros/package.h>
 
 #include <std_msgs/Int32MultiArray.h>
+#include <std_msgs/Bool.h>
 #include <sensor_msgs/Joy.h>
 #include <sensor_msgs/LaserScan.h>
 #include <nav_msgs/Odometry.h>
@@ -26,6 +27,7 @@ private:
     ros::Subscriber laser_sub;
     ros::Subscriber odom_sub;
     ros::Subscriber imu_sub;
+    ros::Subscriber brake_bool_sub;
 
     // Publisher for mux controller
     ros::Publisher mux_pub;
@@ -35,6 +37,8 @@ private:
     int key_mux_idx;
     int safety_copilot_mux_idx;
     int random_walker_mux_idx;
+    int nav_mux_idx;
+    int brake_mux_idx;
 
     // Mux controller array
     std::vector<bool> mux_controller;
@@ -45,15 +49,20 @@ private:
     int key_button_idx;
     int random_walk_button_idx;
     int safety_copilot_button_idx;
+    int nav_button_idx;
 
     // Key indices
     std::string joy_key_char;
     std::string keyboard_key_char;
     std::string copilot_key_char;
     std::string random_walk_key_char;
+    std::string nav_key_char;
 
     // Is safety copilot on?
     bool safety_copilot_on;
+
+    // Is brake engaged?
+    bool brake_engaged;
 
     // Previous controller before safety copilot took control
     int prev_controller_idx;
@@ -83,14 +92,17 @@ public:
         // Initialize the node handle
         n = ros::NodeHandle("~");
 
+        brake_engaged = false;
+
         // get topic names
-        std::string scan_topic, odom_topic, imu_topic, joy_topic, keyboard_topic, mux_topic;
+        std::string scan_topic, odom_topic, imu_topic, joy_topic, keyboard_topic, brake_bool_topic, mux_topic;
         n.getParam("scan_topic", scan_topic);
         n.getParam("odom_topic", odom_topic);
         n.getParam("imu_topic", imu_topic);
         n.getParam("joy_topic", joy_topic);
         n.getParam("mux_topic", mux_topic);
         n.getParam("keyboard_topic", keyboard_topic);
+        n.getParam("brake_bool_topic", brake_bool_topic);
 
         // Make a publisher for mux messages
         mux_pub = n.advertise<std_msgs::Int32MultiArray>(mux_topic, 10);
@@ -101,24 +113,29 @@ public:
         imu_sub = n.subscribe(imu_topic, 1, &BehaviorController::imu_callback, this);
         odom_sub = n.subscribe(odom_topic, 1, &BehaviorController::odom_callback, this);
         key_sub = n.subscribe(keyboard_topic, 1, &BehaviorController::key_callback, this);
+        brake_bool_sub = n.subscribe(brake_bool_topic, 1, &BehaviorController::brake_callback, this);
 
         // Get mux indices
         n.getParam("joy_mux_idx", joy_mux_idx);
         n.getParam("key_mux_idx", key_mux_idx);
         n.getParam("safety_copilot_mux_idx", safety_copilot_mux_idx);
         n.getParam("random_walker_mux_idx", random_walker_mux_idx);
+        n.getParam("nav_mux_idx", nav_mux_idx);
+        n.getParam("brake_mux_idx", brake_mux_idx);
 
         // Get button indices
         n.getParam("joy_button_idx", joy_button_idx);
         n.getParam("key_button_idx", key_button_idx);
         n.getParam("copilot_button_idx", safety_copilot_button_idx);
         n.getParam("random_walk_button_idx", random_walk_button_idx);
+        n.getParam("nav_button_idx", nav_button_idx);
 
         // Get key indices
         n.getParam("joy_key_char", joy_key_char);
         n.getParam("keyboard_key_char", keyboard_key_char);
         n.getParam("copilot_key_char", copilot_key_char);
         n.getParam("random_walk_key_char", random_walk_key_char);
+        n.getParam("nav_key_char", nav_key_char);
 
         // Initialize the mux controller 
         n.getParam("mux_size", mux_size);
@@ -239,6 +256,7 @@ public:
     void toggle_mux(int mux_idx, std::string driver_name) {
         // This takes in an index and the name of the planner/driver and 
         // toggles the mux appropiately
+        brake_engaged = false;
         if (mux_controller[mux_idx]) {
             ROS_INFO_STREAM(driver_name << " turned off");
             mux_controller[mux_idx] = false;
@@ -250,8 +268,27 @@ public:
         }
     }
 
+    void toggle_brake_mux() {
+        ROS_INFO_STREAM("E-brake turned on");
+        // turn everything off
+        for (int i = 0; i < mux_size; i++) {
+            mux_controller[i] = false;
+        }
+        // turn on desired controller
+        mux_controller[brake_mux_idx] = true;
+
+        publish_mux();
+    }
+
 
     /// ---------------------- CALLBACK FUNCTIONS ----------------------
+
+    void brake_callback(const std_msgs::Bool & msg) {
+        if (msg.data && !brake_engaged) {
+            toggle_brake_mux();
+            brake_engaged = true;
+        }
+    }
 
     void joy_callback(const sensor_msgs::Joy & msg) {
         // Changing mux_controller:
@@ -317,7 +354,10 @@ public:
         } else if (msg.data == random_walk_key_char) {
             // random walker
             toggle_mux(random_walker_mux_idx, "Random Walker");
-        } 
+        } else if (msg.data == nav_key_char) {
+            // nav
+            toggle_mux(nav_mux_idx, "Navigation");
+        }
         // ***Add new else if statement here for new planning method***
         // if (msg.data == new_key_char) {
         //  // new planner
