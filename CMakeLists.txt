@@ -62,7 +62,6 @@ if(DEFINED CATKIN_DEVEL_PREFIX)
 
   add_message_files(
     FILES
-    SynchronizedSensor.msg
     )
   generate_messages(
     DEPENDENCIES
