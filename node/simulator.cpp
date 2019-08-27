@@ -286,10 +286,8 @@ public:
     }
 
     void update_pose(const ros::TimerEvent&) {
-        /// TODO: *****FUNCTION DETAILS*****
 
-        // simulate PID controller
-        // set_accel(compute_accel(desired_speed));
+        // simulate P controller
         compute_accel(desired_speed);
         set_steer_angle_vel(compute_steer_vel(desired_steer_ang));
 
@@ -412,7 +410,7 @@ public:
     }
 
     void first_ttc_actions() {
-            // completely stop vehicle
+        // completely stop vehicle
         state.velocity = 0.0;
         state.angular_velocity = 0.0;
         state.slip_angle = 0.0;
@@ -477,27 +475,24 @@ public:
         // get difference between current and desired
         double dif = (desired_velocity - state.velocity);
 
-        double kp;
         if (state.velocity > 0) {
             if (dif > 0) {
                 // accelerate
-                kp = 2.0 * max_accel / max_speed;
-                set_accel(kp*dif);
+                double kp = 2.0 * max_accel / max_speed;
+                set_accel(kp * dif);
             } else {
                 // brake
-                kp = 2.0 * max_decel / max_speed;
                 accel = -max_decel; 
             }    
         } else {
             if (dif > 0) {
                 // brake
-                kp = 2.0 * max_decel / max_speed;
                 accel = max_decel;
 
             } else {
                 // accelerate
-                kp = 2.0 * max_accel / max_speed;
-                set_accel(kp*dif);
+                double kp = 2.0 * max_accel / max_speed;
+                set_accel(kp * dif);
             }   
         }
     }
