@@ -19,9 +19,6 @@ C_S_rear: 2.3 #.79 # 1/rad ? (estimated weight/4)
 mass: 3.17 # kg (measured on car 'lidart')
 moment_inertia: .0398378 # kg m^2 (estimated as a rectangle with width and height of car and evenly distributed mass, then shifted to account for center of mass location)
 
-# clip velocity
-speed_clip_diff: 0.1
-
 # The rate at which the pose and the lidar publish
 update_pose_rate: 0.001
 
@@ -46,17 +43,13 @@ map_free_threshold: 0.8
 # Time to collision cutoff value
 ttc_threshold: 0.01
 
-# Safety margin for collision avoidance assisted driving
-coll_threshold: 0.6
-
 # Indices for mux controller
-mux_size: 6
+mux_size: 5
 joy_mux_idx: 0
 key_mux_idx: 1
-safety_copilot_mux_idx: 2
-random_walker_mux_idx: 3
-brake_mux_idx: 4
-nav_mux_idx: 5
+random_walker_mux_idx: 2
+brake_mux_idx: 3
+nav_mux_idx: 4
 # **Add index for new planning method here**
 # **(increase mux_size accordingly)**
 new_method_mux_idx: -1
@@ -70,7 +63,7 @@ joy_max_speed: 2. # meters/second
 # Joystick indices for toggling mux
 joy_button_idx: 4  # LB button
 key_button_idx: 6 # not sure 
-copilot_button_idx: 0 # A button
+brake_button_idx: 0 # A button
 random_walk_button_idx: 1 # ? button
 nav_button_idx: 5 # RB button
 # **Add button for new planning method here**
@@ -79,7 +72,7 @@ new_button_idx: -1
 # Keyboard characters for toggling mux
 joy_key_char: "j"
 keyboard_key_char: "k"
-copilot_key_char: "p"
+brake_key_char: "b"
 random_walk_key_char: "r"
 nav_key_char: "n"
 # **Add button for new planning method here**
@@ -88,9 +81,6 @@ new_key_char: "z"
 # Keyboard driving params
 keyboard_speed: 1.8  # meters/second
 keyboard_steer_ang: .3  # radians
-
-# map-collision parameters
-inflation_size: 5
 
 # obstacle parameters
 obstacle_size: 2
@@ -116,36 +106,13 @@ nav_drive_topic: "/nav"
 # **Add name for new planning method here**
 new_drive_topic: "/new_drive"
 
-
 # name of file to write collision log to 
 collision_file: "collision_file"
-
-
-# The names of opponent car's topics to listen and publish to
-opponent_drive_topic: "/op_drive"
-opponent_scan_topic: "/op_scan"
-opponent_pose_topic: "/op_pose"
-opponent_odom_topic: "/op_odom"
-opponent_pose_rviz_topic: "/move_base_simple/goal"
-
 
 # The names of the transformation frames published to
 map_frame: "map"
 base_frame: "base_link"
-opponent_base_frame: "op_base_link"
 scan_frame: "laser"
-opponent_scan_frame: "op_laser"
 
 # Turn this off for mapping
 broadcast_transform: true
-
-# Scan to image parameters
-converted_image_topic: "/converted_scan"
-image_size: 64
-image_res: 0.05
-car_width: 7
-car_length: 9
-# colors, bgr, ints
-background_color: [0, 255, 0]
-road_color: [100, 100, 100]
-car_color: [0, 0, 255]
