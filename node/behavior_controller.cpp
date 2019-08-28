@@ -193,11 +193,6 @@ public:
     void change_controller(int controller_idx) {
         // This changes the controller to the input index and publishes it
 
-        if (mux_controller[brake_mux_idx]) {
-            // if the ebrake is active, don't change to anything else
-            return;
-        }
-
         // turn everything off
         for (int i = 0; i < mux_size; i++) {
             mux_controller[i] = false;
@@ -282,8 +277,10 @@ public:
     /// ---------------------- CALLBACK FUNCTIONS ----------------------
 
     void brake_callback(const std_msgs::Bool & msg) {
-        if (msg.data && !safety_on) {
+        if (msg.data && safety_on) {
             toggle_brake_mux();
+        } else if (!msg.data && mux_controller[brake_mux_idx]) {
+            mux_controller[brake_mux_idx] = false;
         }
     }
 
@@ -298,7 +295,7 @@ public:
             toggle_mux(key_mux_idx, "Keyboard");
         }
         else if (msg.buttons[brake_button_idx]) { 
-            // emergency brake (can't use toggle_mux due to prev_controller stuff)
+            // emergency brake 
             if (safety_on) {
                 ROS_INFO("Emergency brake turned off");
                 safety_on = false;
@@ -311,6 +308,9 @@ public:
         else if (msg.buttons[random_walk_button_idx]) { 
             // random walker
             toggle_mux(random_walker_mux_idx, "Random Walker");
+        } else if (msg.buttons[nav_button_idx]) {
+            // nav
+            toggle_mux(nav_mux_idx, "Navigation");
         }
         // ***Add new else if statement here for new planning method***
         // if (msg.buttons[new_button_idx]) {
@@ -329,7 +329,7 @@ public:
             // keyboard
             toggle_mux(key_mux_idx, "Keyboard");
         } else if (msg.data == brake_key_char) {
-            // emergency brake (can't use toggle_mux due to prev_controller stuff)
+            // emergency brake 
             if (safety_on) {
                 ROS_INFO("Emergency brake turned off");
                 safety_on = false;
@@ -371,10 +371,6 @@ public:
     void imu_callback(const sensor_msgs::Imu & msg) {
 
     }
-
-
-
-
 
 
 };
