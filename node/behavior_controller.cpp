@@ -35,10 +35,11 @@ private:
     // Mux indices
     int joy_mux_idx;
     int key_mux_idx;
-    int safety_copilot_mux_idx;
     int random_walker_mux_idx;
     int nav_mux_idx;
     int brake_mux_idx;
+    // ***Add mux index for new planner here***
+    // int new_mux_idx;
 
     // Mux controller array
     std::vector<bool> mux_controller;
@@ -48,24 +49,22 @@ private:
     int joy_button_idx;
     int key_button_idx;
     int random_walk_button_idx;
-    int safety_copilot_button_idx;
+    int brake_button_idx;
     int nav_button_idx;
+    // ***Add button index for new planner here***
+    // int new_button_idx;
 
     // Key indices
     std::string joy_key_char;
     std::string keyboard_key_char;
-    std::string copilot_key_char;
+    std::string brake_key_char;
     std::string random_walk_key_char;
     std::string nav_key_char;
+    // ***Add key char for new planner here***
+    // int new_key_char;
 
-    // Is safety copilot on?
-    bool safety_copilot_on;
-
-    // Is brake engaged?
-    bool brake_engaged;
-
-    // Previous controller before safety copilot took control
-    int prev_controller_idx;
+    // Is ebrake on? (not engaged, but on)
+    bool safety_on;
 
     // To roughly keep track of vehicle state
     racecar_simulator::CarState state;
@@ -86,13 +85,10 @@ private:
     int collision_count=0;
 
 
-
 public:
     BehaviorController() {
         // Initialize the node handle
         n = ros::NodeHandle("~");
-
-        brake_engaged = false;
 
         // get topic names
         std::string scan_topic, odom_topic, imu_topic, joy_topic, keyboard_topic, brake_bool_topic, mux_topic;
@@ -118,24 +114,29 @@ public:
         // Get mux indices
         n.getParam("joy_mux_idx", joy_mux_idx);
         n.getParam("key_mux_idx", key_mux_idx);
-        n.getParam("safety_copilot_mux_idx", safety_copilot_mux_idx);
         n.getParam("random_walker_mux_idx", random_walker_mux_idx);
-        n.getParam("nav_mux_idx", nav_mux_idx);
         n.getParam("brake_mux_idx", brake_mux_idx);
+        n.getParam("nav_mux_idx", nav_mux_idx);
+        // ***Add mux index for new planner here***
+        // n.getParam("new_mux_idx", new_mux_idx);
 
         // Get button indices
         n.getParam("joy_button_idx", joy_button_idx);
         n.getParam("key_button_idx", key_button_idx);
-        n.getParam("copilot_button_idx", safety_copilot_button_idx);
         n.getParam("random_walk_button_idx", random_walk_button_idx);
+        n.getParam("brake_button_idx", brake_button_idx);
         n.getParam("nav_button_idx", nav_button_idx);
+        // ***Add button index for new planner here***
+        // n.getParam("new_button_idx", new_button_idx);
 
         // Get key indices
         n.getParam("joy_key_char", joy_key_char);
         n.getParam("keyboard_key_char", keyboard_key_char);
-        n.getParam("copilot_key_char", copilot_key_char);
         n.getParam("random_walk_key_char", random_walk_key_char);
+        n.getParam("brake_key_char", brake_key_char);
         n.getParam("nav_key_char", nav_key_char);
+        // ***Add key char for new planner here***
+        // n.getParam("new_key_char", new_key_char);
 
         // Initialize the mux controller 
         n.getParam("mux_size", mux_size);
@@ -144,9 +145,8 @@ public:
             mux_controller[i] = false;
         }
 
-        // Start with safety copilot off and previous controller to joystick
-        safety_copilot_on = false;
-        prev_controller_idx = joy_mux_idx;
+        // Start with ebrake off
+        safety_on = false;
 
         // Initialize state
         state = {.x=0.0, .y=0.0, .theta=0.0, .velocity=0.0, .steer_angle=0.0, .angular_velocity=0.0, .slip_angle=0.0, .st_dyn=false};
@@ -193,8 +193,8 @@ public:
     void change_controller(int controller_idx) {
         // This changes the controller to the input index and publishes it
 
-        if (mux_controller[safety_copilot_mux_idx]) {
-            // if the safety copilot is active, don't change to anything else
+        if (mux_controller[brake_mux_idx]) {
+            // if the ebrake is active, don't change to anything else
             return;
         }
 
@@ -209,8 +209,7 @@ public:
     }
 
     void collision_checker(const sensor_msgs::LaserScan & msg) {
-        // This function calculates TTC to see if there's a collision, and 
-        // if safety copilot should take over
+        // This function calculates TTC to see if there's a collision
         if (state.velocity != 0) {
             for (size_t i = 0; i < msg.ranges.size(); i++) {
                 double angle = msg.angle_min + i * msg.angle_increment;
@@ -241,9 +240,9 @@ public:
     }
 
     void collision_helper() {
-        // This function will turn off safety copilot, clear the mux and publish it
+        // This function will turn off ebrake, clear the mux and publish it
 
-        safety_copilot_on = false;
+        safety_on = false;
 
         // turn everything off
         for (int i = 0; i < mux_size; i++) {
@@ -256,7 +255,6 @@ public:
     void toggle_mux(int mux_idx, std::string driver_name) {
         // This takes in an index and the name of the planner/driver and 
         // toggles the mux appropiately
-        brake_engaged = false;
         if (mux_controller[mux_idx]) {
             ROS_INFO_STREAM(driver_name << " turned off");
             mux_controller[mux_idx] = false;
@@ -269,7 +267,7 @@ public:
     }
 
     void toggle_brake_mux() {
-        ROS_INFO_STREAM("E-brake turned on");
+        ROS_INFO_STREAM("Emergency brake engaged");
         // turn everything off
         for (int i = 0; i < mux_size; i++) {
             mux_controller[i] = false;
@@ -284,9 +282,8 @@ public:
     /// ---------------------- CALLBACK FUNCTIONS ----------------------
 
     void brake_callback(const std_msgs::Bool & msg) {
-        if (msg.data && !brake_engaged) {
+        if (msg.data && !safety_on) {
             toggle_brake_mux();
-            brake_engaged = true;
         }
     }
 
@@ -300,20 +297,15 @@ public:
             // keyboard
             toggle_mux(key_mux_idx, "Keyboard");
         }
-        else if (msg.buttons[safety_copilot_button_idx]) { 
-            // safety copilot (can't use toggle_mux due to prev_controller stuff)
-            if (safety_copilot_on) {
-                ROS_INFO("Safety Copilot turned off");
-                safety_copilot_on = false;
-                // switch control to previous controller if safety copilot was on
-                if (mux_controller[safety_copilot_mux_idx]) {
-                    mux_controller[safety_copilot_mux_idx] = false;
-                    change_controller(prev_controller_idx);
-                }
+        else if (msg.buttons[brake_button_idx]) { 
+            // emergency brake (can't use toggle_mux due to prev_controller stuff)
+            if (safety_on) {
+                ROS_INFO("Emergency brake turned off");
+                safety_on = false;
             }
             else {
-                ROS_INFO("Safety Copilot turned on");
-                safety_copilot_on = true;
+                ROS_INFO("Emergency brake turned on");
+                safety_on = true;
             }
         }
         else if (msg.buttons[random_walk_button_idx]) { 
@@ -336,20 +328,15 @@ public:
         } else if (msg.data == keyboard_key_char) {
             // keyboard
             toggle_mux(key_mux_idx, "Keyboard");
-        } else if (msg.data == copilot_key_char) {
-            // safety copilot (can't use toggle_mux due to prev_controller stuff)
-            if (safety_copilot_on) {
-                ROS_INFO("Safety Copilot turned off");
-                safety_copilot_on = false;
-                // switch control to previous controller if safety copilot was on
-                if (mux_controller[safety_copilot_mux_idx]) {
-                    mux_controller[safety_copilot_mux_idx] = false;
-                    change_controller(prev_controller_idx);
-                }
+        } else if (msg.data == brake_key_char) {
+            // emergency brake (can't use toggle_mux due to prev_controller stuff)
+            if (safety_on) {
+                ROS_INFO("Emergency brake turned off");
+                safety_on = false;
             }
             else {
-                ROS_INFO("Safety Copilot turned on");
-                safety_copilot_on = true;
+                ROS_INFO("Emergency brake turned on");
+                safety_on = true;
             }
         } else if (msg.data == random_walk_key_char) {
             // random walker

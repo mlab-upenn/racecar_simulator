@@ -28,8 +28,6 @@ private:
     // Mux indices
     int joy_mux_idx;
     int key_mux_idx;
-    int brake_mux_idx;
-    int nav_mux_idx;
 
     // Mux controller array
     std::vector<bool> mux_controller;
@@ -59,13 +57,11 @@ public:
         n = ros::NodeHandle("~");
 
         // get topic names
-        std::string drive_topic, mux_topic, joy_topic, key_topic, nav_drive_topic, brake_drive_topic;
+        std::string drive_topic, mux_topic, joy_topic, key_topic;
         n.getParam("drive_topic", drive_topic);
         n.getParam("mux_topic", mux_topic);
         n.getParam("joy_topic", joy_topic);
         n.getParam("keyboard_topic", key_topic);
-        n.getParam("nav_drive_topic", nav_drive_topic);
-        n.getParam("brake_drive_topic", brake_drive_topic);
 
         // Make a publisher for drive messages
         drive_pub = n.advertise<ackermann_msgs::AckermannDriveStamped>(drive_topic, 10);
@@ -80,8 +76,6 @@ public:
         // get mux indices
         n.getParam("joy_mux_idx", joy_mux_idx);
         n.getParam("key_mux_idx", key_mux_idx);
-        n.getParam("brake_mux_idx", brake_mux_idx);
-        n.getParam("nav_mux_idx", nav_mux_idx);
 
         // get params for joystick calculations
         n.getParam("joy_speed_axis", joy_speed_axis);
@@ -104,18 +98,30 @@ public:
             prev_mux[i] = false;
         }
 
+        // A channel contains a subscriber to the given drive topic and a publisher to the main drive topic
         channels = std::vector<Channel*>();
 
-        // channel for braking and nav
-        add_channel(nav_drive_topic, drive_topic, nav_mux_idx);
-        add_channel(brake_drive_topic, drive_topic, brake_mux_idx);
-
         /// Add new channels here:
+        // Random driver example
         int random_walker_mux_idx;
         std::string rand_drive_topic;
         n.getParam("rand_drive_topic", rand_drive_topic);
         n.getParam("random_walker_mux_idx", random_walker_mux_idx);
         add_channel(rand_drive_topic, drive_topic, random_walker_mux_idx);
+
+        // Channel for emergency braking
+        int brake_mux_idx;
+        std::string brake_drive_topic;
+        n.getParam("brake_drive_topic", brake_drive_topic);
+        n.getParam("brake_mux_idx", brake_mux_idx);
+        add_channel(brake_drive_topic, drive_topic, brake_mux_idx);
+
+        // General navigation channel
+        int nav_mux_idx;
+        std::string nav_drive_topic;
+        n.getParam("nav_drive_topic", nav_drive_topic);
+        n.getParam("nav_mux_idx", nav_mux_idx);
+        add_channel(nav_drive_topic, drive_topic, nav_mux_idx);
 
         // ***Add a channel for a new planner here**
         // int new_mux_idx;
@@ -249,7 +255,6 @@ void Channel::drive_callback(const ackermann_msgs::AckermannDriveStamped & msg) 
         drive_pub.publish(msg);
     }
 }
-
 
 int main(int argc, char ** argv) {
     ros::init(argc, argv, "mux_controller");
